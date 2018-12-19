@@ -51,36 +51,41 @@ import java.io.IOException;
  * @since 3.0
  */
 public class AuthenticationFilter extends AbstractCasFilter {
-
+    
     /**
      * The URL to the CAS Server login.
      */
     private String casServerLoginUrl;
-
+    
     /**
      * Whether to send the renew request or not.
      */
     private boolean renew = false;
-
+    
     /**
      * Whether to send the gateway request or not.
      */
     private boolean gateway = false;
     
     private GatewayResolver gatewayStorage = new DefaultGatewayResolverImpl();
-
+    
     protected void initInternal(final FilterConfig filterConfig) throws ServletException {
         if (!isIgnoreInitConfiguration()) {
             super.initInternal(filterConfig);
+            // 获取 cas 登录地址，用参数 casServerLoginUrl 配置，默认为 null
             setCasServerLoginUrl(getPropertyFromInitParams(filterConfig, "casServerLoginUrl", null));
             log.trace("Loaded CasServerLoginUrl parameter: " + this.casServerLoginUrl);
+            
+            //
             setRenew(parseBoolean(getPropertyFromInitParams(filterConfig, "renew", "false")));
             log.trace("Loaded renew parameter: " + this.renew);
+            
+            // 获取 gateway
             setGateway(parseBoolean(getPropertyFromInitParams(filterConfig, "gateway", "false")));
             log.trace("Loaded gateway parameter: " + this.gateway);
-
+            
             final String gatewayStorageClass = getPropertyFromInitParams(filterConfig, "gatewayStorageClass", null);
-
+            
             if (gatewayStorageClass != null) {
                 try {
                     this.gatewayStorage = (GatewayResolver) Class.forName(gatewayStorageClass).newInstance();
@@ -91,34 +96,41 @@ public class AuthenticationFilter extends AbstractCasFilter {
             }
         }
     }
-
+    
     public void init() {
         super.init();
+        // AuthenticationFilter 中 casServerLoginUrl 不能为空
         CommonUtils.assertNotNull(this.casServerLoginUrl, "casServerLoginUrl cannot be null.");
     }
-
+    
     public final void doFilter(final ServletRequest servletRequest, final ServletResponse servletResponse, final FilterChain filterChain) throws IOException, ServletException {
         final HttpServletRequest request = (HttpServletRequest) servletRequest;
         final HttpServletResponse response = (HttpServletResponse) servletResponse;
         final HttpSession session = request.getSession(false);
+        // 获取 session 中的 Assertion
         final Assertion assertion = session != null ? (Assertion) session.getAttribute(CONST_CAS_ASSERTION) : null;
-
+        
+        // 如果不为空，说明在 ticket 检验中已通过
         if (assertion != null) {
+            // 直接进入下一个 filter
             filterChain.doFilter(request, response);
             return;
         }
-
+        
         final String serviceUrl = constructServiceUrl(request, response);
+        
+        // 获取 ticket
         final String ticket = CommonUtils.safeGetParameter(request,getArtifactParameterName());
         final boolean wasGatewayed = this.gatewayStorage.hasGatewayedAlready(request, serviceUrl);
-
+        
+        // ticket 不等于空跳过 或者 wasGatewayed 为 true
         if (CommonUtils.isNotBlank(ticket) || wasGatewayed) {
             filterChain.doFilter(request, response);
             return;
         }
-
+        
         final String modifiedServiceUrl;
-
+        
         log.debug("no ticket and no assertion found");
         if (this.gateway) {
             log.debug("setting gateway attribute in session");
@@ -126,33 +138,34 @@ public class AuthenticationFilter extends AbstractCasFilter {
         } else {
             modifiedServiceUrl = serviceUrl;
         }
-
+        
         if (log.isDebugEnabled()) {
             log.debug("Constructed service url: " + modifiedServiceUrl);
         }
-
+        
+        // 构建重定向 url
         final String urlToRedirectTo = CommonUtils.constructRedirectUrl(this.casServerLoginUrl, getServiceParameterName(), modifiedServiceUrl, this.renew, this.gateway);
-
+        
         if (log.isDebugEnabled()) {
             log.debug("redirecting to \"" + urlToRedirectTo + "\"");
         }
-
+        
         response.sendRedirect(urlToRedirectTo);
     }
-
+    
     public final void setRenew(final boolean renew) {
         this.renew = renew;
     }
-
+    
     public final void setGateway(final boolean gateway) {
         this.gateway = gateway;
     }
-
+    
     public final void setCasServerLoginUrl(final String casServerLoginUrl) {
         this.casServerLoginUrl = casServerLoginUrl;
     }
     
     public final void setGatewayStorage(final GatewayResolver gatewayStorage) {
-    	this.gatewayStorage = gatewayStorage;
+        this.gatewayStorage = gatewayStorage;
     }
 }

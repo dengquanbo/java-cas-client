@@ -24,32 +24,36 @@ import java.io.IOException;
 import java.io.StringReader;
 
 /**
- * Implementation of a Ticket Validator that can validate tickets conforming to the CAS 1.0 specification.
+ * Implementation of a Ticket Validator that can validate tickets conforming to
+ * the CAS 1.0 specification.
  *
  * @author Scott Battaglia
  * @version $Revision$ $Date$
  * @since 3.1
  */
 public final class Cas10TicketValidator extends AbstractCasProtocolUrlBasedTicketValidator {
-
+    
     public Cas10TicketValidator(final String casServerUrlPrefix) {
         super(casServerUrlPrefix);
     }
-
+    
     protected String getUrlSuffix() {
         return "validate";
     }
-
+    
     protected Assertion parseResponseFromServer(final String response) throws TicketValidationException {
+        // 返回结果不是以 yes 开头，说明 ticket 检验失败
         if (!response.startsWith("yes")) {
             throw new TicketValidationException("CAS Server could not validate ticket.");
         }
-
+        
         try {
+            // 成功返回的格式为: yes/n1/n，此时读取第二行即可得到用户名
             final BufferedReader reader = new BufferedReader(new StringReader(response));
             reader.readLine();
             final String name = reader.readLine();
-
+            
+            // 用用户名构建一个 AssertionImpl 对象
             return new AssertionImpl(name);
         } catch (final IOException e) {
             throw new TicketValidationException("Unable to parse response.", e);
